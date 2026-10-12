@@ -3,10 +3,18 @@
 use App\Http\Controllers\Admin\LicenseExportController;
 use App\Http\Controllers\ProfileController;
 use App\Livewire\Admin;
+use App\Services\ResponseSigner;
 use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'welcome')->name('home');
 Route::view('/docs', 'docs')->name('docs');
+
+// The public half of the signing keypair (safe to publish; the private key never leaves storage/).
+Route::get('/public-key.pem', fn (ResponseSigner $signer) => response($signer->publicKey(), 200, [
+    'Content-Type' => 'text/plain; charset=UTF-8',
+    'X-LicenseBox-Key-Id' => $signer->fingerprint(),
+    'Cache-Control' => 'public, max-age=300',
+]))->name('public-key');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::livewire('/dashboard', Admin\Dashboard::class)->name('dashboard');

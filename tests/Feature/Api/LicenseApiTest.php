@@ -222,3 +222,18 @@ it('rate limits API calls per IP', function () {
 
     api('check_connection', [], $this->key)->assertStatus(429);
 });
+
+it('publishes the public key that verifies API responses', function () {
+    $signer = app(ResponseSigner::class);
+
+    $response = $this->get('/public-key.pem')
+        ->assertOk()
+        ->assertHeader('X-LicenseBox-Key-Id', $signer->fingerprint());
+
+    expect($response->getContent())->toBe($signer->publicKey())
+        ->toStartWith('-----BEGIN PUBLIC KEY-----')
+        ->not->toContain('PRIVATE');
+
+    $signed = api('check_connection', [], $this->key);
+    expect(openssl_verify($signed->getContent(), base64_decode($signed->headers->get('X-LicenseBox-Signature')), $response->getContent(), OPENSSL_ALGO_SHA256))->toBe(1);
+});

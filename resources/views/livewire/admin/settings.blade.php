@@ -38,6 +38,9 @@
                     The SDK holds only the public key below, so it can detect forged responses or a fake license server.
                 </p>
                 <p class="mt-2 text-sm">Key ID: <span class="font-mono">{{ $fingerprint }}</span></p>
+                <p class="mt-1 text-sm">Public URL:
+                    <a href="{{ route('public-key') }}" target="_blank" class="font-mono text-indigo-600 hover:underline break-all">{{ route('public-key') }}</a>
+                </p>
             </div>
             <button type="button" wire:click="regenerateKeys"
                     wire:confirm="Generate a new keypair? Every SDK you have already shipped will reject responses until it is updated with the new public key."
