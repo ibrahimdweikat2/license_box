@@ -267,8 +267,12 @@ EOF
     fi
 
     # Reuse the password from an earlier run so the existing .env keeps working.
+    # The generated one has upper/lower case, digits and a symbol to pass MySQL's validate_password
+    # policy, and no characters that need quoting in .env, sed or SQL.
     DB_PASSWORD=$(get_env DB_PASSWORD)
-    [[ -n $DB_PASSWORD ]] || DB_PASSWORD=$(openssl rand -hex 24)
+    if [[ ! $DB_PASSWORD =~ [A-Z] || ! $DB_PASSWORD =~ [a-z] || ! $DB_PASSWORD =~ [0-9] || ! $DB_PASSWORD =~ [-_.] ]]; then
+        DB_PASSWORD="Lb-$(openssl rand -hex 20)-Q7x"
+    fi
 
     db_admin <<SQL
 CREATE DATABASE IF NOT EXISTS \`$DB_NAME\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
