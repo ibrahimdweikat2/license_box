@@ -82,8 +82,21 @@ git_access() {
         git ls-remote origin >/dev/null 2>&1
 }
 
-# MySQL client as an admin: unix-socket root (MariaDB default) or root with a password (MySQL 8).
+# MySQL client as an admin: unix-socket root (MariaDB default), or the account given in DB_ADMIN_CNF.
 db_admin() { mysql ${DB_ADMIN_CNF:+--defaults-extra-file="$DB_ADMIN_CNF"} "$@"; }
+
+# Write the admin login to a private option file. Backslashes are escaped and the quote style avoids
+# a quote inside the password, so passwords with special characters work.
+write_admin_cnf() {
+    local user=$1 pass=${2//\\/\\\\} q='"'
+    [[ $pass == *'"'* ]] && q="'"
+    if [[ -z ${DB_ADMIN_CNF:-} ]]; then
+        DB_ADMIN_CNF=$(mktemp)
+        trap 'rm -f "$DB_ADMIN_CNF"' EXIT
+    fi
+    chmod 600 "$DB_ADMIN_CNF"
+    printf '[client]\nuser=%s\npassword=%s%s%s\n' "$user" "$q" "$pass" "$q" > "$DB_ADMIN_CNF"
+}
 
 # ---------------------------------------------------------------------------------------------
 # Steps
@@ -228,16 +241,29 @@ EOF
         systemctl is-active --quiet "$service" || systemctl start "$service"
     fi
 
-    # Admin access: unix-socket root first, otherwise ask for the root password.
+    # Admin access: unix-socket root first, otherwise ask for an account that can create databases and users.
     DB_ADMIN_CNF=
     if ! mysql -e 'SELECT 1' >/dev/null 2>&1; then
-        local root_password
-        read -rsp "    MySQL root password (needed once to create the database): " root_password; echo
-        DB_ADMIN_CNF=$(mktemp)
-        chmod 600 "$DB_ADMIN_CNF"
-        printf '[client]\nuser=root\npassword="%s"\n' "$root_password" > "$DB_ADMIN_CNF"
-        trap 'rm -f "$DB_ADMIN_CNF"' EXIT
-        db_admin -e 'SELECT 1' >/dev/null || die "Could not log in to MySQL as root."
+        info "A MySQL account that can create databases and users is needed once (usually root)."
+        info "Fresh MySQL 8 and no root password set yet? Find the temporary one with:"
+        info "  sudo grep 'temporary password' /var/log/mysqld.log"
+        local admin_user admin_pass output attempt
+        for attempt in 1 2 3; do
+            read -rp "    MySQL admin user [root]: " admin_user
+            read -rsp "    Password for ${admin_user:-root}: " admin_pass; echo
+            write_admin_cnf "${admin_user:-root}" "$admin_pass"
+            if output=$(db_admin -e 'SELECT 1' 2>&1); then
+                break
+            fi
+            if [[ $output == *1820* ]]; then
+                die "The password of '${admin_user:-root}' has expired (normal right after installing MySQL 8). Set a new one:
+       mysql -u ${admin_user:-root} -p      (log in with the temporary password)
+       ALTER USER USER() IDENTIFIED BY 'A-New-Strong-Pass1!';
+   then run install.sh again."
+            fi
+            warn "${output#*ERROR }"
+            (( attempt < 3 )) || die "Could not log in to MySQL. Check the user and password (the other sites' .env files may show which account they use)."
+        done
     fi
 
     # Reuse the password from an earlier run so the existing .env keeps working.
