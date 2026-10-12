@@ -1,0 +1,4 @@
+# Minimal OpenSSL config so key generation works on hosts (e.g. Windows PHP) without openssl.cnf.
+[req]
+distinguished_name = dn
+[dn]
